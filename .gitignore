@@ -1,0 +1,6 @@
+# survey microdata are not redistributed
+data/
+results/
+.venv/
+__pycache__/
+*.pyc
