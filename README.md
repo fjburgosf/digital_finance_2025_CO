@@ -49,6 +49,7 @@ python src/01_prepare_data.py
 python src/02_audit_counts.py
 python src/03_build_analytic.py
 python src/04_decomposition.py --tag main
+python src/04b_education_territory.py
 python src/05_two_part.py --tag main
 ```
 
@@ -58,6 +59,7 @@ python src/05_two_part.py --tag main
 | 02 | `02_audit_counts.py` | Checks merge keys and skip patterns; unweighted counts by department and area | `results/00_audit/audit_counts.json` |
 | 03 | `03_build_analytic.py` | Builds the analytic file of persons aged 15 or more (outcomes, groups and design variables) | `data/processed/analytic_15plus.parquet`, `build_checks.json` |
 | 04 | `04_decomposition.py` | Weighted prevalences of P(U), P(B\|U) and P(B), and exact log decomposition of the gaps, for Colombia, the Caribbean region and Cesar | `results/01_decomposition/<tag>/prevalences.csv`, `decomposition.csv`, `meta.json` |
+| 04b | `04b_education_territory.py` | Exact decomposition of the territorial gaps (Cesar, rest of the Caribbean, whole Caribbean against the rest of Colombia) within each educational level, with the same bootstrap as step 04 | `results/03_education/decomposition_by_education.csv`, `prevalences_by_education.csv`, `meta.json` |
 | 05 | `05_two_part.py` | Weighted two-part logit model (U; B given U), territorial counterfactuals, average marginal effects and a Fairlie-type decomposition | `results/02_two_part/<tag>/counterfactuals.csv`, `coefficients.csv`, `fairlie.csv`, `meta.json` |
 
 ### Sensitivity analyses
