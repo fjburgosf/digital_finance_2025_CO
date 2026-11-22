@@ -84,7 +84,10 @@ def cond_design(d, X):
     if not SKILLS:
         return X
     Z = X.copy()
-    Z["skills"] = (d["skills"].fillna(0).to_numpy() / 12.0)
+    # every adult internet user answered the twelve skills items (checked in step 03); the model of the
+    # conditional part only uses internet users, so no value is imputed
+    assert d.loc[d["U"] == 1, "skills"].notna().all()
+    Z["skills"] = d["skills"].to_numpy(dtype=float) / 12.0
     return Z
 
 

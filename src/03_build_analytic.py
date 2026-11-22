@@ -112,6 +112,8 @@ def main():
            "nonusers_18plus": int((a.U == 0).sum()), "n_strata": int(d.stratum.nunique()), "n_psu": int(d.psu.nunique()),
            "territory_n_18plus": a.territory.value_counts().to_dict()}
     assert chk["B_without_U"] == 0 and chk["missing_weight"] == 0
+    assert (d.groupby("psu")["stratum"].nunique() == 1).all()  # every primary unit belongs to a single stratum
+    assert chk["skills_missing_users_18plus"] == 0
     (OUT / "build_checks.json").write_text(json.dumps(chk, ensure_ascii=False, indent=1), encoding="utf-8")
     print(json.dumps(chk, ensure_ascii=False, indent=1))
 

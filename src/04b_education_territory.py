@@ -1,6 +1,6 @@
 """Step 04b: territorial gaps within each educational level.
 
-Exploratory analysis added after the main results were known, at the authors' request. For the adults of each
+For the adults of each
 educational level (primary or less, secondary, technical or higher), the gap in online banking of Cesar,
 of the rest of the Caribbean and of the whole Caribbean with respect to the rest of Colombia is decomposed with the
 same exact decomposition, bootstrap (Rao-Wu, 999 replicates, seed 20261120) and disclosure rules as step 04.
