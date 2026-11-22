@@ -17,7 +17,7 @@ The repository includes only the analysis scripts. It does not include the surve
 The microdata are not redistributed here. They are public and can be downloaded, after registration, from the DANE
 microdata catalogue (ANDA): ECV 2025, catalogue 905, <https://microdatos.dane.gov.co/index.php/catalog/905>.
 
-Download the CSV version of these five modules:
+Download the CSV version of these six modules:
 
 | Module (ANDA) | File created in `data/raw/` |
 |---|---|
@@ -26,6 +26,7 @@ Download the CSV version of these five modules:
 | Datos de la vivienda | `ecv2025_vivienda.csv` |
 | Educación | `ecv2025_educacion.csv` |
 | Variables de diseño muestral | `ecv2025_diseno_muestral.csv` |
+| Fuerza de trabajo | `ecv2025_fuerza_trabajo.csv` |
 
 Put the zip files, as delivered by ANDA, in `data/downloads/` (step 01 extracts them), or put the CSV files directly
 in `data/raw/` with the names of the table.
@@ -52,6 +53,8 @@ python src/04_decomposition.py --tag main
 python src/04b_education_territory.py
 python src/05_two_part.py --tag main
 python src/05_two_part.py --tag skills --skills
+python src/05_two_part.py --tag labour --labour
+python src/05_two_part.py --tag labour_skills --labour --skills
 python src/05c_skills_means.py
 ```
 
@@ -76,7 +79,9 @@ python src/04_decomposition.py --tag psu_segment --psu-segment
 
 They use, respectively, the population aged 15 or more, internet use at least once a week, and the Caribbean region
 without San Andrés; the last one uses the segments as primary units in every stratum. `05_two_part.py --skills` adds the
-number of digital skills (P1710S1–S12) to the model of online banking among internet users.
+number of digital skills (P1710S1–S12) to the model of online banking among internet users, and `--labour` adds the
+labour situation (salaried contributing to a pension, salaried not contributing, independent or other worker,
+unemployed, inactive) to both models.
 
 ## Definitions
 

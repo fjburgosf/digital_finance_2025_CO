@@ -11,6 +11,10 @@ DIRECTORIO (dwelling: department and area). Variables:
 - design: FEX_C, ESTRATO2020; primary sampling unit = municipality (MPIO), as in the ECV methodology, except in the
   strata with a single municipality (forced inclusion), where the segments are the first units drawn (MPIO:SEGMENTO)
 - digital skills: number of the 12 activities of P1710S1-S12 that the person knows how to do (0-12)
+- labour situation (labour-force module): employed = worked, had a paid activity, had a job or worked unpaid last
+  week (P6240 = 1 or P6250/P6260/P6270 = 1); unemployed = not employed and searched in the last 4 weeks (P6280 = 1);
+  inactive otherwise. Employed persons are split into salaried (P6435 = 1-3) contributing to a pension fund
+  (P6920 = 1), salaried not contributing, and independent, employer or unpaid workers (P6435 = 4-9)
 
 Output: data/processed/analytic_15plus.parquet, build_checks.json
 
@@ -42,8 +46,10 @@ def main():
     edu = read("educacion", KEY + ["P8587", "P8586", "P1088"])
     viv = read("vivienda", ["DIRECTORIO", "P1_DEPARTAMENTO", "CLASE"]).drop_duplicates("DIRECTORIO")
     dis = read("diseno_muestral", KEY + ["ESTRATO2020", "SEGMENTO", "MPIO"])
+    lab = read("fuerza_trabajo", KEY + ["P6240", "P6250", "P6260", "P6270", "P6280", "P6435", "P6920"])
     d = tic.merge(com, on=KEY, validate="1:1").merge(edu, on=KEY, validate="1:1") \
-           .merge(viv, on="DIRECTORIO", validate="m:1").merge(dis, on=KEY, validate="1:1")
+           .merge(viv, on="DIRECTORIO", validate="m:1").merge(dis, on=KEY, validate="1:1") \
+           .merge(lab, on=KEY, how="left", validate="1:1")
     d["w"] = pd.to_numeric(d["FEX_C"].str.replace(",", "."), errors="coerce")
     d["age"] = pd.to_numeric(d["P6040"], errors="coerce")
     d = d[d["age"] >= 15].copy()
@@ -72,6 +78,11 @@ def main():
     d["ethnicity"] = d["P6080"].map({"1": "Indigenous", "2": "Other (Rrom, Raizal or Palenquero)",
                                      "3": "Other (Rrom, Raizal or Palenquero)", "4": "Other (Rrom, Raizal or Palenquero)",
                                      "5": "Black or Afro-Colombian", "6": "None"}).fillna("Unknown")
+    emp = (d["P6240"] == "1") | (d["P6250"] == "1") | (d["P6260"] == "1") | (d["P6270"] == "1")
+    sal = d["P6435"].isin(["1", "2", "3"])
+    d["labour"] = np.select([emp & sal & (d["P6920"] == "1"), emp & sal, emp, d["P6280"] == "1", d["P6240"].notna()],
+                            ["Salaried, contributing to a pension", "Salaried, not contributing", "Independent or other worker",
+                             "Unemployed", "Inactive"], default="Unknown")
     sk = d[[f"P1710S{k}" for k in range(1, 13)]]
     d["skills"] = (sk == "1").sum(axis=1).where(sk.notna().any(axis=1))
     d["reason_nonuse"] = d["P1929"].map({"1": "Too expensive", "2": "Not necessary", "3": "Does not know how to use it",
@@ -83,7 +94,7 @@ def main():
     d["psu_segment"] = d["MPIO"] + ":" + d["SEGMENTO"]  # previous definition, kept for sensitivity
     keep = ["DIRECTORIO", "SECUENCIA_P", "ORDEN", "w", "age", "U", "U_weekly", "B", "B_weekly", "dept", "territory",
             "caribbean", "caribbean_no_sai", "area", "sex", "age_group", "education", "student", "ethnicity", "reason_nonuse",
-            "stratum", "psu", "psu_segment", "skills"]
+            "stratum", "psu", "psu_segment", "skills", "labour"]
     multi = int((d.groupby("stratum")["MPIO"].nunique() > 1).sum())
     d = d[keep]
     d.to_parquet(OUT / "analytic_15plus.parquet", index=False)
@@ -93,6 +104,7 @@ def main():
            "ethnicity_other_18plus": int(a.ethnicity.str.startswith("Other").sum()),
            "ethnicity_unknown_18plus": int((a.ethnicity == "Unknown").sum()),
            "skills_missing_users_18plus": int(a.skills[a.U == 1].isna().sum()),
+           "labour_18plus": a.labour.value_counts().to_dict(),
            "strata_multi_mpio": multi,
            "sex_missing": int(d.sex.isna().sum()), "users_18plus": int(a.U.sum()), "ebank_18plus": int(a.B.sum()),
            "B_without_U": int(((d.B == 1) & (d.U == 0)).sum()),

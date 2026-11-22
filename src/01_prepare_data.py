@@ -10,6 +10,7 @@ If you already have the CSV files, you can place them directly in data/raw/ with
     data/raw/ecv2025_vivienda.csv            Datos de la vivienda
     data/raw/ecv2025_educacion.csv           Educación
     data/raw/ecv2025_diseno_muestral.csv     Variables de diseño muestral
+    data/raw/ecv2025_fuerza_trabajo.csv      Fuerza de trabajo
 
 Usage (from the repository root):  python src/01_prepare_data.py
 """
@@ -30,6 +31,7 @@ MODULES = {
     "ecv2025_vivienda.csv": "vivienda",
     "ecv2025_educacion.csv": "educacion",
     "ecv2025_diseno_muestral.csv": "diseno",
+    "ecv2025_fuerza_trabajo.csv": "fuerza",
 }
 
 
