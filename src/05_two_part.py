@@ -1,5 +1,5 @@
-"""Step 05: adjusted two-part model and territorial counterfactuals, and the Fairlie-type aggregate decomposition
-of the territorial gap (sensitivity).
+"""Step 05: adjusted two-part model and territorial counterfactuals, and the Fairlie-type
+aggregate decomposition of the territorial gap (sensitivity).
 
 Two weighted logit models for adults (18+), with indicators for age group, sex, education, area, ethnicity and
 territory (Cesar, rest of the Caribbean, rest of Colombia; reference = rest of Colombia):
@@ -18,6 +18,8 @@ Fairlie-type aggregate decomposition (pooled logit for B among all adults withou
 of the rest of Colombia): explained (composition) = P(X_rest, b_rest) - P(X_T, b_rest); unexplained = remainder.
 
 Uncertainty: the same PSU bootstrap as step 04 (Rao-Wu, 999 replicates, seed 20261120), refitting every model.
+Counterfactual prevalences are weighted means with the expansion factors. Options: --skills (digital skills in
+the conditional part) and --psu-segment (segments as primary units, previous definition) [sensitivity].
 
 Outputs: results/02_two_part/<tag>/counterfactuals.csv, coefficients.csv, fairlie.csv
 
@@ -73,18 +75,32 @@ def wmean(x, w):
     return float(np.sum(x * w) / np.sum(w))
 
 
+SKILLS = False  # --skills: digital skills (0-12, scaled to 0-1) added to the conditional part (sensitivity)
+
+
+def cond_design(d, X):
+    if not SKILLS:
+        return X
+    Z = X.copy()
+    Z["skills"] = (d["skills"].fillna(0).to_numpy() / 12.0)
+    return Z
+
+
 def one_fit(d, X, w):
     users = d["U"].to_numpy() == 1
+    XC = cond_design(d, X)
     mU = fit(X, d["U"].to_numpy(), w)
-    mC = fit(X[users], d["B"].to_numpy()[users], w[users])
+    mC = fit(XC[users], d["B"].to_numpy()[users], w[users])
     res = {}
     for t, mask in (("Cesar", d.territory == "Cesar"), ("Rest of the Caribbean", d.territory == "Rest of the Caribbean"),
                     ("Caribbean", d.territory != "Rest of Colombia")):
         mask = mask.to_numpy()
         Xt, wt = X[mask], w[mask]
         Xr = set_territory(Xt, "Rest of Colombia")
+        XCt = XC[mask]
+        XCr = set_territory(XCt, "Rest of Colombia")
         pU_t, pU_r = mU.predict_proba(Xt.to_numpy())[:, 1], mU.predict_proba(Xr.to_numpy())[:, 1]
-        pC_t, pC_r = mC.predict_proba(Xt.to_numpy())[:, 1], mC.predict_proba(Xr.to_numpy())[:, 1]
+        pC_t, pC_r = mC.predict_proba(XCt.to_numpy())[:, 1], mC.predict_proba(XCr.to_numpy())[:, 1]
         obs, cfU, cfC, cfUC = (wmean(a * b, wt) for a, b in ((pU_t, pC_t), (pU_r, pC_t), (pU_t, pC_r), (pU_r, pC_r)))
         total = np.log(obs / cfUC)
         termU = 0.5 * (np.log(obs / cfU) + np.log(cfC / cfUC))
@@ -93,7 +109,7 @@ def one_fit(d, X, w):
                   "adj_ratio_B": float(np.exp(total)), "adj_term_internet": float(termU),
                   "adj_term_conditional": float(termC), "adj_share_internet": float(termU / total) if abs(total) >= 0.05 else np.nan,
                   "ame_U": wmean(pU_t - pU_r, wt), "ame_C": wmean(pC_t - pC_r, wt), "ame_B": obs - cfUC}
-    coefs = {"U": dict(zip(X.columns, mU.coef_[0])), "C": dict(zip(X.columns, mC.coef_[0]))}
+    coefs = {"U": dict(zip(X.columns, mU.coef_[0])), "C": dict(zip(XC.columns, mC.coef_[0]))}
     return res, coefs
 
 
@@ -118,12 +134,18 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tag", default="main")
     ap.add_argument("--reps", type=int, default=999)
+    ap.add_argument("--skills", action="store_true")
+    ap.add_argument("--psu-segment", action="store_true")
     a = ap.parse_args()
+    global SKILLS
+    SKILLS = a.skills
     t0 = time.time()
     out = ROOT / "results" / "02_two_part" / a.tag
     out.mkdir(parents=True, exist_ok=True)
     d = pd.read_parquet(PROC / "analytic_15plus.parquet")
     d = d[d.age >= 18].reset_index(drop=True)
+    if a.psu_segment:
+        d["psu"] = d["psu_segment"]
     X = design(d)
     w = d["w"].to_numpy()
     w = w / w.mean()
@@ -159,6 +181,7 @@ def main():
     pd.DataFrame(frows).to_csv(out / "fairlie.csv", index=False)
     pd.DataFrame(coefs).to_csv(out / "coefficients.csv")
     meta = {"tag": a.tag, "n": int(len(d)), "n_users": int(d.U.sum()), "reps": a.reps, "seed": dec.SEED,
+            "skills": a.skills, "psu_segment": a.psu_segment, "n_psu": int(d.psu.nunique()),
             "runtime_min": round((time.time() - t0) / 60, 1)}
     (out / "meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
     print(json.dumps(meta, indent=1))

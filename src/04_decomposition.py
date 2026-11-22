@@ -10,7 +10,7 @@ replacement in each stratum; strata with one PSU keep multiplier 1), 999 replica
 intervals. Disclosure control: cells with fewer than 30 unweighted persons are suppressed; estimates with a
 coefficient of variation above 15% are flagged (DANE recommendation).
 
-Scopes: Colombia (all groupings), the Caribbean region and Cesar (groupings within the region).
+Scopes : Colombia (all groupings), the Caribbean region and Cesar (groupings within the region).
 Options: --population 18 (main) or 15 (sensitivity); --weekly (U = at least weekly use) [sensitivity];
 --caribbean-no-sai (the Caribbean without San Andrés) [sensitivity].
 
@@ -85,6 +85,7 @@ def main():
     ap.add_argument("--population", type=int, default=18)
     ap.add_argument("--weekly", action="store_true")
     ap.add_argument("--caribbean-no-sai", action="store_true")
+    ap.add_argument("--psu-segment", action="store_true")
     a = ap.parse_args()
     out = ROOT / "results" / "01_decomposition" / a.tag
     out.mkdir(parents=True, exist_ok=True)
@@ -94,6 +95,8 @@ def main():
         d["U"], d["B"] = d["U_weekly"], d["B_weekly"]
     if a.caribbean_no_sai:
         d = d[d["dept"] != "88"].copy()
+    if a.psu_segment:
+        d["psu"] = d["psu_segment"]
     d["wU"], d["wB"] = d["w"] * d["U"], d["w"] * d["B"]
     rng = np.random.default_rng(SEED)
     psu_stratum = d.groupby("psu")["stratum"].first()
@@ -132,6 +135,10 @@ def main():
                 rU, rC, rT = (np.where(bad, np.nan, x) for x in (rU, rC, rT))
                 with np.errstate(divide="ignore", invalid="ignore"):
                     share = rU / rT
+                # the share of each stage is reported only when the total gap is at least about 5% and its 95% CI
+                # excludes zero (otherwise the ratio of two small log differences is unstable)
+                lo_t, hi_t = np.nanquantile(rT, 0.025), np.nanquantile(rT, 0.975)
+                precise = abs(tot) >= 0.05 and (lo_t > 0 or hi_t < 0)
                 row = {"scope": scope, "grouping": var, "group": lev, "reference": ref, "n_group": ng, "n_ref": nr,
                        "ratio_B": np.exp(tot), "ratio_B_lo": np.exp(np.nanquantile(rT, 0.025)),
                        "ratio_B_hi": np.exp(np.nanquantile(rT, 0.975)),
@@ -139,9 +146,9 @@ def main():
                        "term_internet_hi": np.nanquantile(rU, 0.975),
                        "term_conditional": tC, "term_conditional_lo": np.nanquantile(rC, 0.025),
                        "term_conditional_hi": np.nanquantile(rC, 0.975), "total_log_gap": tot,
-                       "share_internet": tU / tot if abs(tot) >= 0.05 else np.nan,
-                       "share_internet_lo": np.nanquantile(share, 0.025) if abs(tot) >= 0.05 else np.nan,
-                       "share_internet_hi": np.nanquantile(share, 0.975) if abs(tot) >= 0.05 else np.nan,
+                       "share_internet": tU / tot if precise else np.nan,
+                       "share_internet_lo": np.nanquantile(share, 0.025) if precise else np.nan,
+                       "share_internet_hi": np.nanquantile(share, 0.975) if precise else np.nan,
                        "invalid_replicates": int(np.isnan(rT).sum() + np.isinf(rT).sum()),
                        "suppressed": min(ng, nr) < 30}
                 dec_rows.append(row)
@@ -156,6 +163,7 @@ def main():
     prev.round(5).to_csv(out / "prevalences.csv", index=False)
     dec.round(5).to_csv(out / "decomposition.csv", index=False)
     meta = {"tag": a.tag, "population": a.population, "weekly": a.weekly, "caribbean_no_sai": a.caribbean_no_sai,
+            "psu_segment": a.psu_segment,
             "n": int(len(d)), "replicates": R, "seed": SEED, "n_psu": int(len(psu_index)),
             "strata_single_psu": int((psu_stratum.value_counts() < 2).sum())}
     (out / "meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")

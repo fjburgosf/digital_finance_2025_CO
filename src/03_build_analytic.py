@@ -1,4 +1,4 @@
-"""Step 03: analytic file of persons aged 15+ (adults 18+ is the main population and 15+ a sensitivity analysis).
+"""Step 03: analytic file of persons aged 15+.
 
 Merges the ECV 2025 modules by DIRECTORIO + SECUENCIA_P + ORDEN (TIC, composition, education, design) and by
 DIRECTORIO (dwelling: department and area). Variables:
@@ -8,7 +8,9 @@ DIRECTORIO (dwelling: department and area). Variables:
 - groups: territory (Cesar, rest of the Caribbean, rest of Colombia; and the Caribbean without San Andrés),
   area (CLASE), sex (P6020), age group, education (P8587), ethnicity (P6080)
 - P1929 = main reason for not using the internet
-- design: FEX_C, ESTRATO2020, PSU = MPIO:SEGMENTO
+- design: FEX_C, ESTRATO2020; primary sampling unit = municipality (MPIO), as in the ECV methodology, except in the
+  strata with a single municipality (forced inclusion), where the segments are the first units drawn (MPIO:SEGMENTO)
+- digital skills: number of the 12 activities of P1710S1-S12 that the person knows how to do (0-12)
 
 Output: data/processed/analytic_15plus.parquet, build_checks.json
 
@@ -35,7 +37,7 @@ def read(name, cols):
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     OUT.mkdir(parents=True, exist_ok=True)
-    tic = read("tic", KEY + ["FEX_C", "P1084", "P1083S5", "P1929"])
+    tic = read("tic", KEY + ["FEX_C", "P1084", "P1083S5", "P1929"] + [f"P1710S{k}" for k in range(1, 13)])
     com = read("composicion_hogar", KEY + ["P6020", "P6040", "P6080"])
     edu = read("educacion", KEY + ["P8587", "P8586", "P1088"])
     viv = read("vivienda", ["DIRECTORIO", "P1_DEPARTAMENTO", "CLASE"]).drop_duplicates("DIRECTORIO")
@@ -67,21 +69,31 @@ def main():
                                ["Primary or less", "Secondary", "Technical or higher", "Primary or less", "Secondary",
                                 "Technical or higher"], default="Unknown")
     d["student"] = (d["P8586"] == "1").astype(int)
-    d["ethnicity"] = d["P6080"].map({"1": "Indigenous", "5": "Black or Afro-Colombian", "6": "None"}).fillna("Other")
+    d["ethnicity"] = d["P6080"].map({"1": "Indigenous", "2": "Other (Rrom, Raizal or Palenquero)",
+                                     "3": "Other (Rrom, Raizal or Palenquero)", "4": "Other (Rrom, Raizal or Palenquero)",
+                                     "5": "Black or Afro-Colombian", "6": "None"}).fillna("Unknown")
+    sk = d[[f"P1710S{k}" for k in range(1, 13)]]
+    d["skills"] = (sk == "1").sum(axis=1).where(sk.notna().any(axis=1))
     d["reason_nonuse"] = d["P1929"].map({"1": "Too expensive", "2": "Not necessary", "3": "Does not know how to use it",
                                          "4": "No coverage", "5": "Not allowed", "6": "Security or privacy",
                                          "7": "Other"})
     d["stratum"] = d["ESTRATO2020"]
-    d["psu"] = d["MPIO"] + ":" + d["SEGMENTO"]
+    n_mpio = d.groupby("stratum")["MPIO"].transform("nunique")
+    d["psu"] = np.where(n_mpio > 1, d["MPIO"], d["MPIO"] + ":" + d["SEGMENTO"])
+    d["psu_segment"] = d["MPIO"] + ":" + d["SEGMENTO"]  # previous definition, kept for sensitivity
     keep = ["DIRECTORIO", "SECUENCIA_P", "ORDEN", "w", "age", "U", "U_weekly", "B", "B_weekly", "dept", "territory",
             "caribbean", "caribbean_no_sai", "area", "sex", "age_group", "education", "student", "ethnicity", "reason_nonuse",
-            "stratum", "psu"]
+            "stratum", "psu", "psu_segment", "skills"]
+    multi = int((d.groupby("stratum")["MPIO"].nunique() > 1).sum())
     d = d[keep]
     d.to_parquet(OUT / "analytic_15plus.parquet", index=False)
     a = d[d.age >= 18]
     chk = {"n_15plus": int(len(d)), "n_18plus": int(len(a)), "missing_weight": int(d.w.isna().sum()),
            "education_unknown_18plus": int((a.education == "Unknown").sum()),
-           "ethnicity_other_18plus": int((a.ethnicity == "Other").sum()),
+           "ethnicity_other_18plus": int(a.ethnicity.str.startswith("Other").sum()),
+           "ethnicity_unknown_18plus": int((a.ethnicity == "Unknown").sum()),
+           "skills_missing_users_18plus": int(a.skills[a.U == 1].isna().sum()),
+           "strata_multi_mpio": multi,
            "sex_missing": int(d.sex.isna().sum()), "users_18plus": int(a.U.sum()), "ebank_18plus": int(a.B.sum()),
            "B_without_U": int(((d.B == 1) & (d.U == 0)).sum()),
            "nonusers_with_reason_18plus": int(((a.U == 0) & a.reason_nonuse.notna()).sum()),

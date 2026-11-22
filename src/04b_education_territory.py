@@ -1,13 +1,13 @@
-"""Step 04b: territorial gaps in online banking within each educational level.
+"""Step 04b: territorial gaps within each educational level.
 
-For the adults of each educational level (primary or less, secondary, technical or higher; current students are
-classified by the level in which they are enrolled), the gap in online banking of Cesar, of the rest of the
-Caribbean and of the whole Caribbean with respect to the rest of Colombia is decomposed with the same exact
-decomposition, bootstrap (Rao-Wu, 999 replicates, seed 20261120) and disclosure rules as step 04. The replicate
-multipliers are drawn for the whole adult sample, as in step 04, so the estimates of the educational levels share
-one set of replicates.
+Exploratory analysis added after the main results were known, at the authors' request. For the adults of each
+educational level (primary or less, secondary, technical or higher), the gap in online banking of Cesar,
+of the rest of the Caribbean and of the whole Caribbean with respect to the rest of Colombia is decomposed with the
+same exact decomposition, bootstrap (Rao-Wu, 999 replicates, seed 20261120) and disclosure rules as step 04.
+The replicate multipliers are drawn for the whole adult sample, as in step 04, so the estimates of the
+educational levels share one set of replicates.
 
-Outputs: results/03_education/decomposition_by_education.csv, prevalences_by_education.csv, meta.json
+Output: results/03_education/decomposition_by_education.csv, prevalences_by_education.csv, meta.json
 
 Usage (from the repository root):  python src/04b_education_territory.py
 """
@@ -42,7 +42,7 @@ def main():
     rng = np.random.default_rng(dec04.SEED)
     psu_stratum = d.groupby("psu")["stratum"].first()
     psu_index, mult = dec04.replicate_multipliers(psu_stratum, rng)
-    prev_rows, dec_rows = [], []
+    prev_rows, dec_rows, rep_logs = [], [], {}
     for lev in LEVELS:
         ds = d[d.education == lev]
         for var, (ref, others) in GROUPINGS.items():
@@ -62,6 +62,7 @@ def main():
                 rT = rU + rC
                 bad = ~np.isfinite(rT)
                 rU, rC, rT = (np.where(bad, np.nan, x) for x in (rU, rC, rT))
+                rep_logs[(lev, g)] = (tot, rT)
                 with np.errstate(divide="ignore", invalid="ignore"):
                     share = rU / rT
                 big = abs(tot) >= 0.05
@@ -75,6 +76,19 @@ def main():
                                  "share_internet_lo": q(share, 0.025) if big else np.nan,
                                  "share_internet_hi": q(share, 0.975) if big else np.nan,
                                  "invalid_replicates": int(bad.sum()), "suppressed": min(ng, nr) < 30})
+    # contrast between educational levels: difference of the log ratios (same replicates), ratio of ratios
+    con = []
+    for g in ("Cesar", "Caribbean"):
+        for other in ("Secondary", "Primary or less"):
+            t1, r1 = rep_logs[("Technical or higher", g)]
+            t0, r0 = rep_logs[(other, g)]
+            diff, rd = t1 - t0, r1 - r0
+            p2 = 2 * min(np.nanmean(rd >= 0), np.nanmean(rd <= 0))
+            con.append({"group": g, "contrast": f"Technical or higher vs {other}", "ratio_of_ratios": float(np.exp(diff)),
+                        "lo": float(np.exp(np.nanquantile(rd, 0.025))), "hi": float(np.exp(np.nanquantile(rd, 0.975))),
+                        "p_bootstrap": float(max(p2, 1 / dec04.R))})
+    pd.DataFrame(con).round(5).to_csv(OUT / "contrasts_by_education.csv", index=False)
+    print(pd.DataFrame(con).round(3).to_string())
     prev, dec = pd.DataFrame(prev_rows), pd.DataFrame(dec_rows)
     prev.round(5).to_csv(OUT / "prevalences_by_education.csv", index=False)
     dec.round(5).to_csv(OUT / "decomposition_by_education.csv", index=False)
