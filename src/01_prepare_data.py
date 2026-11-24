@@ -1,6 +1,6 @@
 """Step 01: prepare the ECV 2025 microdata (DANE) used by the analysis.
 
-Download the CSV version of the five modules listed below from the DANE microdata catalogue (ANDA, ECV 2025,
+Download the CSV version of the seven modules listed below from the DANE microdata catalogue (ANDA, ECV 2025,
 catalogue 905) and place the zip files, as delivered, in data/downloads/. This script extracts the CSV member of each
 zip into data/raw/ with a fixed name and records the SHA-256 of every file in data/raw/checksums.json.
 If you already have the CSV files, you can place them directly in data/raw/ with the names below.
@@ -11,6 +11,7 @@ If you already have the CSV files, you can place them directly in data/raw/ with
     data/raw/ecv2025_educacion.csv           Educación
     data/raw/ecv2025_diseno_muestral.csv     Variables de diseño muestral
     data/raw/ecv2025_fuerza_trabajo.csv      Fuerza de trabajo
+    data/raw/ecv2025_servicios_hogar.csv     Servicios del hogar
 
 Usage (from the repository root):  python src/01_prepare_data.py
 """
@@ -32,6 +33,7 @@ MODULES = {
     "ecv2025_educacion.csv": "educacion",
     "ecv2025_diseno_muestral.csv": "diseno",
     "ecv2025_fuerza_trabajo.csv": "fuerza",
+    "ecv2025_servicios_hogar.csv": "servicios",
 }
 
 

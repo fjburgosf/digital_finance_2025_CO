@@ -15,6 +15,9 @@ DIRECTORIO (dwelling: department and area). Variables:
   week (P6240 = 1 or P6250/P6260/P6270 = 1); unemployed = not employed and searched in the last 4 weeks (P6280 = 1);
   inactive otherwise. Employed persons are split into salaried (P6435 = 1-3) contributing to a pension fund
   (P6920 = 1), salaried not contributing, and independent, employer or unpaid workers (P6435 = 4-9)
+- per capita household income (PERCAPITA, module 'Servicios del hogar', merged by DIRECTORIO and household number:
+  SECUENCIA_ENCUESTA of the household file = SECUENCIA_P of the person files) and its quintiles among adults (18+),
+  weighted with the expansion factors [sensitivity]
 
 Output: data/processed/analytic_15plus.parquet, build_checks.json
 
@@ -47,9 +50,12 @@ def main():
     viv = read("vivienda", ["DIRECTORIO", "P1_DEPARTAMENTO", "CLASE"]).drop_duplicates("DIRECTORIO")
     dis = read("diseno_muestral", KEY + ["ESTRATO2020", "SEGMENTO", "MPIO"])
     lab = read("fuerza_trabajo", KEY + ["P6240", "P6250", "P6260", "P6270", "P6280", "P6435", "P6920"])
+    ser = read("servicios_hogar", ["DIRECTORIO", "SECUENCIA_ENCUESTA", "PERCAPITA"]).rename(
+        columns={"SECUENCIA_ENCUESTA": "SECUENCIA_P"})
     d = tic.merge(com, on=KEY, validate="1:1").merge(edu, on=KEY, validate="1:1") \
            .merge(viv, on="DIRECTORIO", validate="m:1").merge(dis, on=KEY, validate="1:1") \
-           .merge(lab, on=KEY, how="left", validate="1:1")
+           .merge(lab, on=KEY, how="left", validate="1:1") \
+           .merge(ser, on=["DIRECTORIO", "SECUENCIA_P"], how="left", validate="m:1")
     d["w"] = pd.to_numeric(d["FEX_C"].str.replace(",", "."), errors="coerce")
     d["age"] = pd.to_numeric(d["P6040"], errors="coerce")
     d = d[d["age"] >= 15].copy()
@@ -87,14 +93,21 @@ def main():
     d["skills"] = (sk == "1").sum(axis=1).where(sk.notna().any(axis=1))
     d["reason_nonuse"] = d["P1929"].map({"1": "Too expensive", "2": "Not necessary", "3": "Does not know how to use it",
                                          "4": "No coverage", "5": "Not allowed", "6": "Security or privacy",
-                                         "7": "Other"})
+                                         "7": "Age", "8": "Health", "9": "Other"})  # codes of the ECV 2025 questionnaire
+    d["pc_income"] = pd.to_numeric(d["PERCAPITA"].str.replace(",", "."), errors="coerce")
+    ad = d[d["age"] >= 18]
+    order = ad["pc_income"].sort_values().index
+    cw = ad.loc[order, "w"].cumsum() / ad["w"].sum()
+    cuts = [ad.loc[order, "pc_income"][cw >= q].iloc[0] for q in (0.2, 0.4, 0.6, 0.8)]
+    d["income_q"] = pd.cut(d["pc_income"], [-1] + cuts + [float("inf")], labels=["Q1", "Q2", "Q3", "Q4", "Q5"],
+                           right=True).astype(str)
     d["stratum"] = d["ESTRATO2020"]
     n_mpio = d.groupby("stratum")["MPIO"].transform("nunique")
     d["psu"] = np.where(n_mpio > 1, d["MPIO"], d["MPIO"] + ":" + d["SEGMENTO"])
     d["psu_segment"] = d["MPIO"] + ":" + d["SEGMENTO"]  # previous definition, kept for sensitivity
     keep = ["DIRECTORIO", "SECUENCIA_P", "ORDEN", "w", "age", "U", "U_weekly", "B", "B_weekly", "dept", "territory",
             "caribbean", "caribbean_no_sai", "area", "sex", "age_group", "education", "student", "ethnicity", "reason_nonuse",
-            "stratum", "psu", "psu_segment", "skills", "labour"]
+            "stratum", "psu", "psu_segment", "skills", "labour", "pc_income", "income_q"]
     multi = int((d.groupby("stratum")["MPIO"].nunique() > 1).sum())
     d = d[keep]
     d.to_parquet(OUT / "analytic_15plus.parquet", index=False)
@@ -104,6 +117,8 @@ def main():
            "ethnicity_other_18plus": int(a.ethnicity.str.startswith("Other").sum()),
            "ethnicity_unknown_18plus": int((a.ethnicity == "Unknown").sum()),
            "skills_missing_users_18plus": int(a.skills[a.U == 1].isna().sum()),
+           "income_missing_18plus": int(a.pc_income.isna().sum()),
+           "income_quintile_cuts": [float(c) for c in cuts],
            "labour_18plus": a.labour.value_counts().to_dict(),
            "strata_multi_mpio": multi,
            "sex_missing": int(d.sex.isna().sum()), "users_18plus": int(a.U.sum()), "ebank_18plus": int(a.B.sum()),

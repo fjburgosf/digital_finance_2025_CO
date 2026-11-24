@@ -19,7 +19,8 @@ of the rest of Colombia): explained (composition) = P(X_rest, b_rest) - P(X_T, b
 
 Uncertainty: the same PSU bootstrap as step 04 (Rao-Wu, 999 replicates, seed 20261120), refitting every model.
 Counterfactual prevalences are weighted means with the expansion factors. Options: --skills (digital skills in
-the conditional part), --labour (labour situation in both parts) and --psu-segment (segments as primary units, previous definition) [sensitivity].
+the conditional part), --labour (labour situation in both parts), --income (quintiles of per capita household
+income in both parts) and --psu-segment (segments as primary units, previous definition) [sensitivity].
 
 Outputs: results/02_two_part/<tag>/counterfactuals.csv, coefficients.csv, fairlie.csv
 
@@ -47,7 +48,9 @@ TERR = ["Cesar", "Rest of the Caribbean"]
 
 def design(d, with_territory=True):
     cols = []
-    covs = dict(COVS, labour="Salaried, contributing to a pension") if LABOUR else COVS
+    covs = dict(COVS, labour="Salaried, contributing to a pension") if LABOUR else dict(COVS)
+    if INCOME:
+        covs["income_q"] = "Q5"
     for v, ref in covs.items():
         for lev in sorted(d[v].unique()):
             if lev != ref:
@@ -78,6 +81,7 @@ def wmean(x, w):
 
 SKILLS = False  # --skills: digital skills (0-12, scaled to 0-1) added to the conditional part (sensitivity)
 LABOUR = False  # --labour: labour situation added to both parts (sensitivity)
+INCOME = False  # --income: quintiles of per capita household income added to both parts (sensitivity)
 
 
 def cond_design(d, X):
@@ -141,10 +145,11 @@ def main():
     ap.add_argument("--reps", type=int, default=999)
     ap.add_argument("--skills", action="store_true")
     ap.add_argument("--labour", action="store_true")
+    ap.add_argument("--income", action="store_true")
     ap.add_argument("--psu-segment", action="store_true")
     a = ap.parse_args()
-    global SKILLS, LABOUR
-    SKILLS, LABOUR = a.skills, a.labour
+    global SKILLS, LABOUR, INCOME
+    SKILLS, LABOUR, INCOME = a.skills, a.labour, a.income
     t0 = time.time()
     out = ROOT / "results" / "02_two_part" / a.tag
     out.mkdir(parents=True, exist_ok=True)
@@ -187,7 +192,7 @@ def main():
     pd.DataFrame(frows).to_csv(out / "fairlie.csv", index=False)
     pd.DataFrame(coefs).to_csv(out / "coefficients.csv")
     meta = {"tag": a.tag, "n": int(len(d)), "n_users": int(d.U.sum()), "reps": a.reps, "seed": dec.SEED,
-            "skills": a.skills, "labour": a.labour, "psu_segment": a.psu_segment, "n_psu": int(d.psu.nunique()),
+            "skills": a.skills, "labour": a.labour, "income": a.income, "psu_segment": a.psu_segment, "n_psu": int(d.psu.nunique()),
             "runtime_min": round((time.time() - t0) / 60, 1)}
     (out / "meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
     print(json.dumps(meta, indent=1))

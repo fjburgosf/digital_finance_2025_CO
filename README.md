@@ -17,7 +17,7 @@ The repository includes only the analysis scripts. It does not include the surve
 The microdata are not redistributed here. They are public and can be downloaded, after registration, from the DANE
 microdata catalogue (ANDA): ECV 2025, catalogue 905, <https://microdatos.dane.gov.co/index.php/catalog/905>.
 
-Download the CSV version of these six modules:
+Download the CSV version of these seven modules:
 
 | Module (ANDA) | File created in `data/raw/` |
 |---|---|
@@ -27,6 +27,7 @@ Download the CSV version of these six modules:
 | Educación | `ecv2025_educacion.csv` |
 | Variables de diseño muestral | `ecv2025_diseno_muestral.csv` |
 | Fuerza de trabajo | `ecv2025_fuerza_trabajo.csv` |
+| Servicios del hogar | `ecv2025_servicios_hogar.csv` |
 
 Put the zip files, as delivered by ANDA, in `data/downloads/` (step 01 extracts them), or put the CSV files directly
 in `data/raw/` with the names of the table.
@@ -51,22 +52,27 @@ python src/02_audit_counts.py
 python src/03_build_analytic.py
 python src/04_decomposition.py --tag main
 python src/04b_education_territory.py
+python src/04c_reasons_nonuse.py
 python src/05_two_part.py --tag main
-python src/05_two_part.py --tag skills --skills
 python src/05_two_part.py --tag labour --labour
-python src/05_two_part.py --tag labour_skills --labour --skills
+python src/05_two_part.py --tag income --income
 python src/05c_skills_means.py
+python src/05d_skills_users.py
+python src/05e_income_descriptives.py
 ```
 
 | Step | Script | What it does | Output |
 |---|---|---|---|
-| 01 | `01_prepare_data.py` | Extracts the five ECV modules and records their SHA-256 | `data/raw/*.csv`, `data/raw/checksums.json` |
+| 01 | `01_prepare_data.py` | Extracts the seven ECV modules and records their SHA-256 | `data/raw/*.csv`, `data/raw/checksums.json` |
 | 02 | `02_audit_counts.py` | Checks merge keys and skip patterns; unweighted counts by department and area | `results/00_audit/audit_counts.json` |
-| 03 | `03_build_analytic.py` | Builds the analytic file of persons aged 15 or more (outcomes, groups and design variables) | `data/processed/analytic_15plus.parquet`, `build_checks.json` |
+| 03 | `03_build_analytic.py` | Builds the analytic file of persons aged 15 or more (outcomes, groups, design variables, labour situation and quintiles of per capita household income) | `data/processed/analytic_15plus.parquet`, `build_checks.json` |
 | 04 | `04_decomposition.py` | Weighted prevalences of P(U), P(B\|U) and P(B), and exact log decomposition of the gaps, for Colombia, the Caribbean region and Cesar | `results/01_decomposition/<tag>/prevalences.csv`, `decomposition.csv`, `meta.json` |
 | 04b | `04b_education_territory.py` | Exact decomposition of the territorial gaps (Cesar, rest of the Caribbean, whole Caribbean against the rest of Colombia) within each educational level, with the same bootstrap as step 04, and bootstrap contrasts between educational levels | `results/03_education/decomposition_by_education.csv`, `prevalences_by_education.csv`, `meta.json` |
+| 04c | `04c_reasons_nonuse.py` | Main reason for not using the internet among adult non-users (`P1929`, nine codes of the questionnaire), by territory, with denominators | `results/01_decomposition/reasons_nonuse.csv` |
 | 05 | `05_two_part.py` | Weighted two-part logit model (U; B given U), territorial counterfactuals, average marginal effects and a Fairlie-type decomposition | `results/02_two_part/<tag>/counterfactuals.csv`, `coefficients.csv`, `fairlie.csv`, `meta.json` |
 | 05c | `05c_skills_means.py` | Weighted mean number of digital skills among adult internet users by territory and educational level | `results/02_two_part/skills/skills_means.csv` |
+| 05d | `05d_skills_users.py` | Availability of the digital-skills score by territory and internet use, and adjusted conditional ratios of online banking among internet users with digital skills, labour situation or both | `results/02_two_part/skills_users/skills_availability.csv`, `conditional_ratios.csv`, `meta.json` |
+| 05e | `05e_income_descriptives.py` | Internet use and online banking by quintile of per capita household income and territory | `results/02_two_part/income/prevalences_by_income.csv`, `income_distribution.csv` |
 
 ### Sensitivity analyses
 
@@ -78,10 +84,11 @@ python src/04_decomposition.py --tag psu_segment --psu-segment
 ```
 
 They use, respectively, the population aged 15 or more, internet use at least once a week, and the Caribbean region
-without San Andrés; the last one uses the segments as primary units in every stratum. `05_two_part.py --skills` adds the
-number of digital skills (P1710S1–S12) to the model of online banking among internet users, and `--labour` adds the
+without San Andrés; the last one uses the segments as primary units in every stratum. `05_two_part.py --labour` adds the
 labour situation (salaried contributing to a pension, salaried not contributing, independent or other worker,
-unemployed, inactive) to both models.
+unemployed, inactive) to both models, and `--income` adds the quintiles of per capita household income. The survey
+asks the digital-skills question only to internet users, so the analysis with digital skills is carried out among
+internet users in step 05d (the option `--skills` of step 05 is kept for reference only).
 
 ## Definitions
 
@@ -93,7 +100,12 @@ unemployed, inactive) to both models.
 - Survey design: weight `FEX_C`, strata `ESTRATO2020`; primary sampling units are the municipalities (`MPIO`), as in the
   ECV methodology, except in the strata with a single municipality (forced inclusion), where they are the segments
   (`MPIO:SEGMENTO`).
-- Digital skills: number of the 12 activities of `P1710S1`–`P1710S12` that the person knows how to do (0–12).
+- Digital skills: number of the 12 activities of `P1710S1`–`P1710S12` that the person knows how to do (0–12),
+  observed for internet users only.
+- Reason for not using the internet: `P1929` (1 too expensive, 2 not necessary, 3 does not know how to use it, 4 no
+  coverage, 5 not allowed, 6 security or privacy, 7 age, 8 health, 9 other).
+- Per capita household income: `PERCAPITA` (module Servicios del hogar), merged by `DIRECTORIO` and the household
+  number (`SECUENCIA_ENCUESTA` of the household file = `SECUENCIA_P` of the person files); quintiles among adults.
 
 ## Uncertainty and disclosure control
 
